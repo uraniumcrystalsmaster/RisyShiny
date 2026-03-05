@@ -3,7 +3,9 @@ import WelcomeScreen from './WelcomeScreen';
 import CalendarScreen from './CalendarScreen';
 import React from 'react';
 import './App.css';
+import {processTaskBank} from "./AIJudge";
 
+processTaskBank();
 function App() {
   const [isLoggedIn, setIsLoggedIn] = React.useState(false);
 
