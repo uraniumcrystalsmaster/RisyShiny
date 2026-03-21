@@ -15,15 +15,6 @@ export async function processTaskBank() {
 
         try {
             const result = await getTaskDifficulty(task.description);
-
-            if (result.glitchScore > 0) {
-                console.warn(`!! GLITCH DETECTED !!`);
-                console.warn(`Player Earned: 1 Hacker Token`);
-                console.log(`Raw Output: ${result.erroneousAIResponse}`);
-            } else {
-                console.log(`Score: [${result.score}/10]`);
-                console.log(`Reasoning: ${result.reasoning}`);
-            }
         } catch (err) {
             console.error(`!! CONNECTION ERROR for Task #${task.id} !!`);
         }

@@ -1,4 +1,4 @@
-const GEMINI_API_KEY = "AIzaSyCz5ctaETdp26L0XpYb_D3HN1heXMNj05Q";
+const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
 
 interface AIJudgeResult {
     score: number;

@@ -19,7 +19,7 @@
 .env.test.local
 .env.production.local
 
-# protecting database keys
+# protecting database and API keys
 .env
 
 # logs

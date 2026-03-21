@@ -6,7 +6,7 @@ import { getTaskDifficulty, getRejudgedTaskDifficulty } from 'src/AIJudge';
 interface AIDataState {
     score?: number;
     reasoning?: string;
-    expanded?: boolean;
+    has_menu_open?: boolean;
 }
 
 export default function CalendarScreen() {
@@ -15,14 +15,14 @@ export default function CalendarScreen() {
     const [editingHour, setEditingHour] = React.useState<number | null>(null); // Track which hour rectangle is being typed into
     const [routines, setRoutines] = React.useState<Record<number, string>>({}); // Store the text of each rectangle
     const [eventIds, setEventIds] = React.useState<Record<number, string>>({}); // Track event IDs for performance and SunnyStreak team convenience
-    const [aiData, setAiData] = React.useState<Record<number, AIDataState>>({}); // Stores the scores and reasoning for each hour, keyed by the 24-hour index
+    const [AIData, setAIData] = React.useState<Record<number, AIDataState>>({}); // Stores the scores and reasoning for each hour, keyed by the 24-hour index
     const [debateHour, setDebateHour] = React.useState<number | null>(null); // Stores the specific hour currently being appealed; null means the modal is closed
     const [debateText, setDebateText] = React.useState(''); // Holds the user's written argument for the High Court while they are typing in the modal
-    const [isDebating, setIsDebating] = React.useState(false); // Tracks the loading state of the Thinking model API call to show a spinner and disable buttons
+    const [isDebating, setIsDebating] = React.useState(false); // Tracks the loading state of the thinking model API call to show a spinner and disable buttons
     const [debatedHours, setDebatedHours] = React.useState<number[]>([]); // Tracks which hours have already been appealed to prevent infinite arguing
     const [globalPoints, setGlobalPoints] = React.useState<number>(0); // Tracks the number of points earned in total
 
-    const loadFromDBTodaysEvents = async (uid: string) => {
+    const loadFromDBTodaysEvents = async (user_id: string) => {
         // Get the start and end of today in ISO format (UTC)
         const today = new Date();
         const start = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
@@ -32,7 +32,7 @@ export default function CalendarScreen() {
         const { data, error } = await supabase
             .from('events')
             .select('*')
-            .eq('user_id', uid)
+            .eq('user_id', user_id)
             .gte('start_time', start)
             .lt('start_time', end);
 
@@ -41,27 +41,58 @@ export default function CalendarScreen() {
             return;
         }
 
+        console.log("Events fetched:", JSON.stringify(data, null, 2));
+
         // If events found, put them into React states, so they display on screen
         if (data) {
             const fetchedRoutines: Record<number, string> = {};
             const fetchedIds: Record<number, string> = {};
+            const fetchedAIData: Record<number, AIDataState> = {};
 
             data.forEach(event => {
                 const hour = new Date(event.start_time).getHours();
                 fetchedRoutines[hour] = event.title;
-                fetchedIds[hour] = event.ID; // Store the DB ID, so it can be updated when a user changes the event.
+                fetchedIds[hour] = event.id; // Store the DB id, so it can be updated when a user changes the event.
+                fetchedAIData[hour] = {
+                    score: event.score,
+                    reasoning: event.description,
+                    has_menu_open: event.has_menu_open
+                };
             });
 
             setRoutines(fetchedRoutines);
             setEventIds(fetchedIds);
+            setAIData(fetchedAIData);
         }
     };
 
-    // Get user ID from database
+    // Fetch only email and points from users table in database
     React.useEffect(() => {
         const init = async () => {
             const { data: { user } } = await supabase.auth.getUser();
-            if (user) await loadFromDBTodaysEvents(user.id);
+            if (user) {
+                // Fetch events using the email
+                await loadFromDBTodaysEvents(user.id);
+
+                const { data, error, status } = await supabase
+                    .from('profiles')
+                    .select('global_score')
+                    .eq('id', user.id)
+                    .single();
+
+                if (error) {
+                    console.error("fetch error:", error.message);
+                    console.error("Full error object:", JSON.stringify(error, null, 2));
+                    console.log("HTTP Status:", status);
+                    return;
+                }
+
+                console.log("Points fetched:", JSON.stringify(data, null, 2));
+
+                if (data && data.global_score !== undefined) {
+                    setGlobalPoints(data.global_score);
+                }
+            }
         };
         init().catch(console.error);
     }, []);
@@ -72,7 +103,7 @@ export default function CalendarScreen() {
         const existingId = eventIds[hour];
 
         // Clear previous AI data if the user edits the task
-        setAiData(prev => {
+        setAIData(prev => {
             const next = { ...prev };
             delete next[hour];
             return next;
@@ -91,11 +122,17 @@ export default function CalendarScreen() {
 
         try {
             if (text) {
+                let currentEventId = existingId;
                 if (existingId) {
-                    await supabase
+                    const { error } = await supabase
                         .from('events')
-                        .update({title: text})
-                        .eq('ID', existingId);
+                        .update({ title: text })
+                        .eq('id', existingId);
+                    if (error) {
+                        console.error("Update failed:", error.message);
+                        return; // Stop execution if the DB didn't accept the change
+                    }
+                    console.log("Event updated successfully.");
                 } else {
                     const {data, error} = await supabase
                         .from('events')
@@ -104,7 +141,8 @@ export default function CalendarScreen() {
                             title: text,
                             start_time: startTime,
                             end_time: endTime,
-                            score: 0
+                            score: 0,
+                            has_menu_open: false
                         })
                         .select()
                         .single();
@@ -113,18 +151,49 @@ export default function CalendarScreen() {
                         console.error("Insert failed:", error.message);
                         return;
                     }
-                    if (data) setEventIds(prev => ({...prev, [hour]: data.ID}));
+                    if (data) {
+                        setEventIds(prev => ({...prev, [hour]: data.id}));
+                        currentEventId = data.id; // Capture the new id for the AI to use
+                    }
                 }
-                // Fetch the AI data on save
-                getTaskDifficulty(text).then(result => {
-                    setAiData(prev => ({...prev, [hour]: {
-                        score: result.score,
-                        reasoning: result.reasoning,
-                        expanded: false
-                    }}));
+
+                // Fetch the AI data on save, and put it in Supabase
+                getTaskDifficulty(text).then(async result => {
+                    // Update UI
+                    setAIData(prev => ({...prev, [hour]: {
+                            score: result.score,
+                            reasoning: result.reasoning,
+                        }}));
+
+                    // Update Database
+                    if (currentEventId) {
+                        const { error } = await supabase
+                            .from('events')
+                            .update({
+                                score: result.score,
+                                description: result.reasoning
+                            })
+                            .eq('id', currentEventId);
+
+                        if (error) {
+                            console.error(`Failed to save to DB score for hour ${hour}:`, error.message);
+                        } else {
+                            console.log(`Score ${result.score} saved to DB for hour ${hour}`);
+                        }
+                    }
                 });
-            } else if (!text && existingId) { // Delete event if text is completely cleared
-                await supabase.from('events').delete().eq('ID', existingId);
+            } else if (!text && existingId) {
+                // Delete event from calendar
+                const { error } = await supabase
+                    .from('events')
+                    .delete()
+                    .eq('id', existingId);
+                if (error) {
+                    console.error("Failed to delete event:", error.message);
+                } else {
+                    console.log("Event successfully cleared from database.");
+                }
+
                 setEventIds(prev => { const n = {...prev}; delete n[hour]; return n; });
             }
         } catch (e) {
@@ -133,13 +202,30 @@ export default function CalendarScreen() {
     };
 
     // The big rectangle under an event that appears when clicking the event's score triangle
-    const toggleEventDetails = (hour: number) => {
-        const currentData = aiData[hour] || {};
+    const toggleEventDetails = async (hour: number) => {
+        const currentData = AIData[hour] || {};
+        const existingId = eventIds[hour];
+        const newMenuState = !currentData.has_menu_open;
 
+        // Update calendar immediately
         if (currentData.score !== undefined) {
-            setAiData(prev => ({...prev, [hour]: {
-                ...currentData, expanded: !currentData.expanded }
+            setAIData(prev => ({...prev, [hour]: {
+                    ...currentData, has_menu_open: newMenuState }
             }));
+        }
+
+        // Save the updated calendar event to Supabase
+        if (existingId) {
+            try {
+                const { error } = await supabase
+                    .from('events')
+                    .update({ has_menu_open: newMenuState })
+                    .eq('id', existingId);
+
+                if (error) console.error("Failed to update calendar event:", error.message);
+            } catch (e) {
+                console.error("Supabase update error:", e);
+            }
         }
     };
 
@@ -147,22 +233,46 @@ export default function CalendarScreen() {
     const handleCompleteTask = async (hour: number) => {
         const existingId = eventIds[hour];
 
-        // Add event score to global score
-        const pointsEarned = aiData[hour]?.score || 0;
-        setGlobalPoints(prev => prev + pointsEarned);
+        const pointsEarned = AIData[hour]?.score || 0;
+        console.log(`Current global: ${globalPoints} | Earned from event: ${pointsEarned}`);
 
-        // Wipe local states to immediately return to the "Click to schedule" look
+        const newTotalPoints = globalPoints + pointsEarned;
+        console.log(`New total points: ${newTotalPoints}`);
+
+        // Update UI immediately
+        setGlobalPoints(newTotalPoints);
         setRoutines(prev => { const n = {...prev}; delete n[hour]; return n; });
-        setAiData(prev => { const n = {...prev}; delete n[hour]; return n; });
+        setAIData(prev => { const n = {...prev}; delete n[hour]; return n; });
         setEventIds(prev => { const n = {...prev}; delete n[hour]; return n; });
 
-        // Delete from database so it doesn't pop back up on-screen refresh
         if (existingId) {
             try {
-                await supabase.from('events').delete().eq('ID', existingId);
-                // TODO: Update user's global points in the database here
+                // Call the DB function to handle the global points math
+                // TODO: handle cheating if a user just calls DB to create an event with a very large point value
+                const { error: error } = await supabase.rpc('score_task', {
+                    target_event_id: existingId
+                });
+
+                if (error) {
+                    console.error("Failed to score task via DB:", error.message);
+                } else {
+                    console.log("Successfully saved points via database function.");
+                }
+
+                // Delete the event from the calendar
+                const { error: errorDelete } = await supabase
+                    .from('events')
+                    .delete()
+                    .eq('id', existingId);
+
+                if (errorDelete) {
+                    console.error("Failed to delete event:", errorDelete.message);
+                } else {
+                    console.log("Event successfully cleared from database.");
+                }
+
             } catch (e) {
-                console.error("Failed to clear completed task:", e);
+                console.error("Failed to clear completed task or update points:", e);
             }
         }
     };
@@ -173,15 +283,31 @@ export default function CalendarScreen() {
         setIsDebating(true);
         const hourToDebate = debateHour;
         const taskText = routines[hourToDebate];
+        const eventId = eventIds[hourToDebate];
 
         // Call thinking model
         const result = await getRejudgedTaskDifficulty(taskText, debateText);
 
         // Update the UI with the new score and the thinking model's response
-        setAiData(prev => ({...prev, [hourToDebate]: {...prev[hourToDebate],
+        setAIData(prev => ({...prev, [hourToDebate]: {...prev[hourToDebate],
             score: result.score === -1 ? prev[hourToDebate].score : result.score,
             reasoning: result.reasoning
         }}));
+
+        // Save the debate result to the database
+        if (eventId) {
+            const { error } = await supabase
+                .from('events')
+                .update({
+                    score: result.score === -1 ? AIData[hourToDebate].score : result.score,
+                    description: result.reasoning
+                })
+                .eq('id', eventId);
+            if (error) {
+                console.error("Error saving debate results:", error);
+                return;
+            }
+        }
 
         // Stop the user from arguing with the event's AI response again
         setDebatedHours(prev => [...prev, hourToDebate]);
@@ -224,7 +350,7 @@ export default function CalendarScreen() {
                     const timeLabel = `${hour % 12 === 0 ? 12 : hour % 12}:00 ${hour >= 12 ? 'PM' : 'AM'}`;
 
                     const hasRoutine = !!routines[hour];
-                    const currentAiData = aiData[hour] || {};
+                    const currentAIData = AIData[hour] || {};
 
                     return (
                         <View key={hour}>
@@ -245,9 +371,6 @@ export default function CalendarScreen() {
                                         // Clicking away triggers: save + AI
                                         onBlur={() => handleSave(hour)}
 
-                                        // Hitting 'enter' triggers: save + AI
-                                        onSubmitEditing={() => handleSave(hour)}
-
                                         // Tell the keyboard to vanish when 'enter' is pressed
                                         submitBehavior="blurAndSubmit"
 
@@ -266,10 +389,10 @@ export default function CalendarScreen() {
                                     style={styles.triangleButton}
                                     onPress={() => toggleEventDetails(hour)}
                                     // Make the button visually inactive if there's no score yet
-                                    activeOpacity={currentAiData.score !== undefined ? 0.2 : 1}
+                                    activeOpacity={currentAIData.score !== undefined ? 0.2 : 1}
                                 >
-                                    {currentAiData.score !== undefined ? (
-                                        <Text style={styles.triangleScoreText}>◁ {currentAiData.score}</Text>
+                                    {currentAIData.score !== undefined ? (
+                                        <Text style={styles.triangleScoreText}>◁ {currentAIData.score}</Text>
                                     ) : (
                                         <View style={styles.triangleIcon} />
                                     )}
@@ -277,8 +400,8 @@ export default function CalendarScreen() {
                             )}
                         </View>
 
-                        {/* Row Expansion rectangle */}
-                        {currentAiData.expanded && (
+                        {/* Row Expansion rectangle (event's menu) */}
+                        {currentAIData.has_menu_open && (
                             <View style={styles.expandedRow}>
                                 <TouchableOpacity
                                     style={styles.doneButton}
@@ -299,7 +422,7 @@ export default function CalendarScreen() {
                                     }}
                                 >
                                     <Text style={styles.reasoningText}>
-                                        {currentAiData.reasoning}
+                                        {currentAIData.reasoning}
                                     </Text>
 
                                     <Text style={styles.debateHintText}>
@@ -457,7 +580,7 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: '#333',
     },
-    expandedRow: {
+    expandedRow: { // AKA event's menu
         flexDirection: 'row',
         borderBottomWidth: 1,
         borderBottomColor: '#333',
