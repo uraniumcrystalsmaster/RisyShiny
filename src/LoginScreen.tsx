@@ -9,38 +9,13 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { runAuthRequest } from 'src/config/authErrorHandling';
 import supabase from 'src/config/supabaseClient';
 
 interface LoginScreenProps {
   onLogin: () => void;
   onGoToSignupScreen: () => void;
 }
-
-const mapLoginErrorMessage = (rawMessage: string) => {
-  const message = rawMessage.toLowerCase();
-
-  if (message.includes('invalid login credentials')) {
-    return 'Invalid email or password. Please try again.';
-  }
-
-  if (message.includes('email not confirmed')) {
-    return 'Please confirm your email before logging in.';
-  }
-
-  if (message.includes('too many requests') || message.includes('rate limit')) {
-    return 'Too many login attempts. Please wait and try again.';
-  }
-
-  if (message.includes('network') || message.includes('failed to fetch') || message.includes('fetch')) {
-    return 'Network error. Check your internet connection and try again.';
-  }
-
-  if (message.includes('invalid email')) {
-    return 'Please enter a valid email address.';
-  }
-
-  return rawMessage || 'Unable to log in right now. Please try again.';
-};
 
 export default function LoginScreen({ onLogin, onGoToSignupScreen }: LoginScreenProps) {
   const [email, setEmail] = React.useState('');
@@ -56,29 +31,21 @@ export default function LoginScreen({ onLogin, onGoToSignupScreen }: LoginScreen
       return;
     }
 
-    setLoading(true);
-
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+    await runAuthRequest({
+      action: 'login',
+      setLoading,
+      setErrorMessage,
+      request: () => supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
-      });
-
-      if (error) {
-        setErrorMessage(mapLoginErrorMessage(error.message));
-        return;
-      }
-
-      if (data.user) {
-        console.log('Login successful for:', data.user.email);
-        onLogin();
-      }
-    } catch (error) {
-      const fallbackMessage = error instanceof Error ? error.message : 'Unknown error.';
-      setErrorMessage(mapLoginErrorMessage(fallbackMessage));
-    } finally {
-      setLoading(false);
-    }
+      }),
+      onSuccess: (data) => {
+        if (data.user) {
+          console.log('Login successful for:', data.user.email);
+          onLogin();
+        }
+      },
+    });
   };
 
   return (

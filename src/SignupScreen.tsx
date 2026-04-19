@@ -1,46 +1,17 @@
 import React from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+import { runAuthRequest } from 'src/config/authErrorHandling';
 import supabase from 'src/config/supabaseClient';
-
-const mapSignupErrorMessage = (rawMessage: string) => {
-  const message = rawMessage.toLowerCase();
-
-  if (message.includes('already registered') || message.includes('user already registered')) {
-    return 'This email is already registered. Try logging in instead.';
-  }
-
-  if (message.includes('password') && (message.includes('weak') || message.includes('least') || message.includes('short'))) {
-    return 'Password is too weak. Use at least 6 characters with a mix of letters, numbers, and symbols.';
-  }
-
-  if (message.includes('password should be at least')) {
-    return 'Password is too short. Please use a longer password.';
-  }
-
-  if (message.includes('invalid email') || message.includes('email address is invalid')) {
-    return 'Please enter a valid email address.';
-  }
-
-  if (message.includes('too many requests') || message.includes('rate limit')) {
-    return 'Too many signup attempts. Please wait and try again.';
-  }
-
-  if (message.includes('network') || message.includes('failed to fetch') || message.includes('fetch')) {
-    return 'Network error. Check your internet connection and try again.';
-  }
-
-  return rawMessage || 'Unable to create your account right now. Please try again.';
-};
 
 export default function SignupScreen({ onGoToLoginScreen }: { onGoToLoginScreen: () => void }) {
   const [email, setEmail] = React.useState('');
@@ -56,32 +27,24 @@ export default function SignupScreen({ onGoToLoginScreen }: { onGoToLoginScreen:
       return;
     }
 
-    setLoading(true);
-
-    try {
-      const { data, error } = await supabase.auth.signUp({
+    await runAuthRequest({
+      action: 'signup',
+      setLoading,
+      setErrorMessage,
+      request: () => supabase.auth.signUp({
         email: email.trim(),
         password,
-      });
-
-      if (error) {
-        setErrorMessage(mapSignupErrorMessage(error.message));
-        return;
-      }
-
-      if (data.user) {
-        Alert.alert(
-          'Success!',
-          'Check your email for a confirmation link!',
-          [{ text: 'OK', onPress: () => onGoToLoginScreen() }],
-        );
-      }
-    } catch (error) {
-      const fallbackMessage = error instanceof Error ? error.message : 'Unknown error.';
-      setErrorMessage(mapSignupErrorMessage(fallbackMessage));
-    } finally {
-      setLoading(false);
-    }
+      }),
+      onSuccess: (data) => {
+        if (data.user) {
+          Alert.alert(
+            'Success!',
+            'Check your email for a confirmation link!',
+            [{ text: 'OK', onPress: () => onGoToLoginScreen() }],
+          );
+        }
+      },
+    });
   };
 
   return (
