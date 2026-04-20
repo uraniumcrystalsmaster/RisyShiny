@@ -1,9 +1,10 @@
+import { useFocusEffect } from '@react-navigation/native';
+import { router, useGlobalSearchParams } from 'expo-router';
 import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Modal, ActivityIndicator, Alert } from 'react-native';
+import { ActivityIndicator, Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { getRejudgedTaskDifficulty, getTaskDifficulty } from 'src/AIJudge';
 import supabase from 'src/config/supabaseClient';
-import { getTaskDifficulty, getRejudgedTaskDifficulty } from 'src/AIJudge';
 import { notificationService } from 'src/notifications/NotificationService';
-import { useGlobalSearchParams, router } from 'expo-router';
 
 interface AIDataState {
     score?: number;
@@ -189,7 +190,7 @@ export default function CalendarScreen() {
         return null;
     }, [isOppAwake]);
 
-    const loadFromDBEvents = async (user_id: string) => {
+    const loadFromDBEvents = React.useCallback(async (user_id: string) => {
         // Get the start and the end in ISO format (UTC) for 14 days
         const today = new Date();
         const start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 2).toISOString(); // Buffer for the bedtime
@@ -235,10 +236,9 @@ export default function CalendarScreen() {
             setEventIds(fetchedIds);
             setAIData(fetchedAIData);
         }
-    };
+    }, []);
 
-    // Fetch the email, points, and bedtime from the users table in the database
-    React.useEffect(() => {
+    const loadInitialData = React.useCallback(() => {
         const init = async () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (user) {
@@ -263,7 +263,14 @@ export default function CalendarScreen() {
             }
         };
         init().catch(console.error);
-    }, []);
+    }, [loadFromDBEvents]);
+
+    // Fetch the email, points, and bedtime from the users table in the database
+    useFocusEffect(
+        React.useCallback(() => {
+            loadInitialData();
+        }, [loadInitialData]),
+    );
 
     // Update the logical date if the bedtime settings change
     React.useEffect(() => {
