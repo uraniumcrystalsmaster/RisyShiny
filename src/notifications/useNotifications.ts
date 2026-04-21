@@ -8,6 +8,9 @@ interface UseNotificationsOptions {
   enablePush?: boolean;
 }
 
+// React hook that initializes the notification service on mount.
+// Returns the service instance and the push token (if push was requested).
+// Pass onTap to handle what happens when the user taps a notification.
 export function useNotifications(options: UseNotificationsOptions = {}) {
   const [pushToken, setPushToken] = useState<string | null>(null);
 

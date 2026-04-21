@@ -595,6 +595,9 @@ export default function CalendarScreen() {
     };
 
     // Tactical Ops Mechanics
+
+    // Creates a new enemy at grid position (x, y) with the given HP.
+    // 10% chance tornado, 10% chance speedster, otherwise a normal enemy.
     const spawnEnemy = (x: number, y: number, hp: number) => {
         const r = Math.random();
         let type: 'normal' | 'tornado' | 'speedster' = 'normal';
@@ -893,6 +896,10 @@ export default function CalendarScreen() {
         return () => clearInterval(interval);
     }, [currentLogicalDate, getLogicalToday, handleAdvanceTime]);
 
+    // Handles single and double taps on a 2D grid cell.
+    // Double tap: switches to 1D view for that day and opens the event detail menu.
+    // Single tap with a shop item selected: places a tower on the cell if it has a scored task.
+    // Single tap on an existing tower: selects it as the active shooter.
     const handleGridCellPress = async (dateStr: string, hour: number) => {
         const key = `${dateStr}_${hour}`;
         const now = Date.now();
@@ -967,6 +974,7 @@ export default function CalendarScreen() {
         }
     };
 
+    // Long-pressing a grid cell jumps to the 1D day view and immediately opens the text editor for that hour
     const handleGridCellLongPress = (dateStr: string, hour: number) => {
         setActiveTowerKey(null);
         setActiveDate(dateStr);
@@ -974,6 +982,14 @@ export default function CalendarScreen() {
         setEditingKey(`${dateStr}_${hour}`);
     };
 
+    // Fires the currently selected tower at a tapped enemy.
+    // Shooting costs points equal to the Manhattan distance between tower and enemy.
+    // Each tower type has a different effect:
+    //   basic   → deals 2 damage
+    //   night   → deals 5 damage at rows 10+ (night hours), otherwise 1
+    //   freeze  → freezes the enemy for 3 turns (can't move)
+    //   fire    → sets the enemy on fire for 3 turns (moves randomly)
+    //   merge   → halves the enemy's HP
     const handleEnemyPress = async (enemy: EnemyState) => {
         if (selectedShopItem) {
             setSelectedShopItem(null);
@@ -999,6 +1015,7 @@ export default function CalendarScreen() {
         const success = await deductPoints(dist);
         if (!success) return; // If the database connection fails, restore the original game state
 
+        // Use one ammo charge and remove the tower if it's out
         setTowers(prev => {
             const next = { ...prev };
             next[activeTowerKey] = { ...tower, ammo: tower.ammo - 1 };
@@ -1009,6 +1026,7 @@ export default function CalendarScreen() {
             return next;
         });
 
+        // Apply the tower's effect to the target enemy
         setEnemies(prev => {
             const next = prev.map(e => ({ ...e }));
             const target = next.find(e => e.id === enemy.id);
@@ -1026,6 +1044,7 @@ export default function CalendarScreen() {
         });
     };
 
+    // Clears all enemies, towers, and walls to start a fresh game
     const restartGame = () => {
         setGameOver(false);
         setEnemies([]);
@@ -1034,11 +1053,13 @@ export default function CalendarScreen() {
         setActiveTowerKey(null);
     };
 
+    // Looks up the emoji icon for a tower type (e.g. 'fire' → '🔥')
     const getTowerIcon = (type: string) => {
         const item = SHOP_ITEMS.find(s => s.type === type);
         return item ? item.icon : '';
     };
 
+    // True if any event detail panel is expanded on the currently viewed day — used to shrink other rows so the menu has space
     const isAnyMenuOpenOnActiveDate = userDisplayHours.some(h => AIData[`${activeDate}_${h}`]?.has_menu_open);
 
     return (

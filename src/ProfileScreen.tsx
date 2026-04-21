@@ -163,6 +163,7 @@ export default function App() {
     }, [loadProfile]),
   );
 
+  // Shows a confirmation modal before signing the user out
   const handleSignOut = () => {
     setModalConfig({
       visible: true,
@@ -191,6 +192,7 @@ export default function App() {
     });
   };
 
+  // Prompts the user to confirm a battle, then enables multiplayer mode in the DB and navigates to the calendar
   const handleBattle = () => {
     setModalConfig({
       visible: true,
@@ -224,7 +226,7 @@ export default function App() {
     setAdminModalVisible(true);
   };
 
-  // Admin accounts are allowed to set their points to any positive integer value.
+  // Validates the input is a positive integer, then calls a Supabase RPC to overwrite the global points total
   const handleSetAdminPoints = async () => {
     const trimmedValue = adminPointsInput.trim();
     if (!/^[1-9]\d*$/.test(trimmedValue)) {
@@ -254,6 +256,7 @@ export default function App() {
     setAdminPointsInput('');
   };
 
+  // Returns the user's full name, or their email username if no name is set
   const getUserDisplayName = (u: User | null): string => {
     if (!u) return '';
     const name = u.user_metadata?.full_name;
@@ -261,6 +264,7 @@ export default function App() {
     return u.email?.split('@')[0] || 'User';
   };
 
+  // Returns 1-2 uppercase initials to show in the avatar circle (e.g. "JD" for "John Doe")
   const getUserInitials = (u: User | null): string => {
     if (!u) return '?';
     const name = getUserDisplayName(u);
