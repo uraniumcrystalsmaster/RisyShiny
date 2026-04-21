@@ -41,6 +41,8 @@ type TaskStatus = 'pending' | 'active' | 'completed';
 // Helpers
 // ---------------------------------------------------------------------------
 
+// Returns whether a task is pending, currently active, or completed.
+// Active means the task's time window is happening right now.
 function getTaskStatus(
   task: Task,
   completedIds: Set<string>,
@@ -53,12 +55,14 @@ function getTaskStatus(
   return 'pending';
 }
 
+// Returns a readable date string like "Monday, Apr 20"
 function formatDate(date: Date): string {
   const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${days[date.getDay()]}, ${months[date.getMonth()]} ${date.getDate()}`;
 }
 
+// Returns "Good morning", "Good afternoon", or "Good evening" depending on the hour
 function getGreeting(): string {
   const h = new Date().getHours();
   if (h < 12) return 'Good morning';
@@ -66,12 +70,14 @@ function getGreeting(): string {
   return 'Good evening';
 }
 
+// Returns the user's first name, or the part of their email before "@" if no name is set
 function getUserFirstName(user: User): string {
   const name = user.user_metadata?.full_name as string | undefined;
   if (name) return name.split(' ')[0];
   return (user.email ?? '').split('@')[0];
 }
 
+// Returns up to 2 uppercase letters to display in the avatar circle
 function getUserInitials(user: User): string {
   const name = (user.user_metadata?.full_name as string | undefined) ?? user.email ?? '';
   const parts = name.split(/[@\s]/);
@@ -359,8 +365,11 @@ export default function HomeScreen() {
     }, [loadData]),
   );
 
-const handleTaskTap = async (task: Task) => {
-  const status = getTaskStatus(task, completedIds, activeIds);
+  // Handles tapping a task card:
+  // - First tap: marks it as "active" (started)
+  // - Second tap (while active): awards points, deletes from DB, then removes from list after a short delay
+  const handleTaskTap = async (task: Task) => {
+    const status = getTaskStatus(task, completedIds, activeIds);
 
   if (status === 'pending') {
     setActiveIds(prev => new Set([...prev, task.id]));
@@ -422,6 +431,7 @@ const handleTaskTap = async (task: Task) => {
   // completed state: no further action
 };
 
+  // Minutes remaining until the last task of the day finishes
   const timeLeftMinutes = useMemo(() => {
     if (tasks.length === 0) return 0;
     const last = tasks[tasks.length - 1];

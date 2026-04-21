@@ -166,6 +166,8 @@ class NotificationService {
     return this.expoPushToken;
   }
 
+  // Registers a callback that fires when the user taps a notification.
+  // Returns a cleanup function to remove the listener (call it in useEffect cleanup).
   onNotificationTapped(
     handler: (notification: Notifications.Notification) => void
   ): () => void {

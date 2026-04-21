@@ -32,10 +32,12 @@ interface StatsData {
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+// Builds a 7-day array (oldest → today) and counts how many tasks fell on each day
 function buildWeekStats(eventRows: { start_time: string }[]): DayStat[] {
   const today = new Date();
   const days: DayStat[] = [];
 
+  // Create one entry for each of the past 7 days starting with the oldest
   for (let i = 6; i >= 0; i--) {
     const d = new Date(today);
     d.setDate(today.getDate() - i);
@@ -47,6 +49,7 @@ function buildWeekStats(eventRows: { start_time: string }[]): DayStat[] {
     });
   }
 
+  // Tally up each event into the matching day
   for (const row of eventRows) {
     const key = new Date(row.start_time).toISOString().slice(0, 10);
     const day = days.find(d => d.dateKey === key);
@@ -60,6 +63,8 @@ function buildWeekStats(eventRows: { start_time: string }[]): DayStat[] {
 // BarChart
 // ---------------------------------------------------------------------------
 
+// Renders a simple bar chart. Each bar's height is proportional to that day's task count.
+// Today's bar is highlighted in blue.
 function BarChart({ data }: { data: DayStat[] }) {
   const maxVal = Math.max(...data.map(d => d.count), 1);
 

@@ -56,6 +56,8 @@ export const getAuthErrorMessage = (action: AuthAction, rawMessage: string) => {
     : 'Unable to create your account right now. Please try again.');
 };
 
+// Runs a login or signup request, handles loading state, and maps errors to user-friendly messages.
+// Calls onSuccess with the response data if the request succeeds.
 export async function runAuthRequest({
   action,
   request,
